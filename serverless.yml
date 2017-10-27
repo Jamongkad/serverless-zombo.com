@@ -8,18 +8,19 @@ plugins:
 
 custom:
   siteName: serverless-zombo.com
-  aliasHostedZoneId: Z3AQBSTGFYJSTF    # us-east-1
+  # Bucket name no longer needs to be tied to site name. We can change bucket
+  # name down the road if we want to easily now.
+  bucketName: ${self:custom.siteName}
+  aliasHostedZoneId: Z2FDTNDATAQYW2     # us-east-1
   aliasDNSName: s3-website-us-east-1.amazonaws.com
   s3Sync:
-    - bucketName: ${self:custom.siteName}
+    - bucketName: ${self:custom.bucketName}
       localDir: static
 
 provider:
   name: aws
   runtime: nodejs6.10
   stage: prod
-  stackTags:
-    serverless:servess: ${self:service}
 
 resources:
   Resources:
@@ -28,7 +29,7 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         AccessControl: PublicRead
-        BucketName: ${self:custom.siteName}
+        BucketName: ${self:custom.bucketName}
         WebsiteConfiguration:
           IndexDocument: index.xhtml
           ErrorDocument: index.xhtml
@@ -42,9 +43,9 @@ resources:
           Statement:
             - Sid: PublicReadGetObject
               Effect: Allow
-              Principal: "*"
+              Principal: '*'
               Action:
-              - s3:GetObject
+                - s3:GetObject
               Resource:
                 Fn::Join: [
                   "", [
@@ -56,29 +57,80 @@ resources:
                   ]
                 ]
 
+    StaticSiteCert:
+      Type: AWS::CertificateManager::Certificate
+      Properties:
+        DomainName: ${self:custom.siteName}
+        DomainValidationOptions:
+        - DomainName: ${self:custom.siteName}
+          ValidationDomain: ${self:custom.siteName}
+
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Origins:
+            - DomainName:
+                Fn::GetAtt:
+                  - StaticSite
+                  - DomainName
+              # It isn't necessary to sue this value; but we need the same
+              # value for DefaultCacheBehavior.TargetOriginId
+              Id:
+                Ref: StaticSite
+              CustomOriginConfig:
+                HTTPPort: 80
+                HTTPSPort: 443
+                OriginProtocolPolicy: https-only
+          Enabled: 'true'
+          DefaultRootObject: index.xhtml
+          CustomErrorResponses:
+            - ErrorCode: 404
+              ResponseCode: 200
+              ResponsePagePath: /index.xhtml
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+            TargetOriginId:
+              Ref: StaticSite
+            ForwardedValues:
+              QueryString: 'false'
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+          ViewerCertificate:
+            AcmCertificateArn:
+              Ref: StaticSiteCert
+            SslSupportMethod: sni-only
+          ## Uncomment the following section in case you want to enable logging for CloudFront requests
+          # Logging:
+          #  IncludeCookies: 'false'
+          #   Bucket: mylogs.s3.amazonaws.com
+          #   Prefix: myprefix
+      DependsOn:
+        - StaticSiteS3BucketPolicy
+
     DnsRecord:
       Type: "AWS::Route53::RecordSet"
       Properties:
         AliasTarget:
-          DNSName: ${self:custom.aliasDNSName}
+          DNSName:
+            Fn::GetAtt:
+              - CloudFrontDistribution
+              - DomainName
           HostedZoneId: ${self:custom.aliasHostedZoneId}
         HostedZoneName: ${self:custom.siteName}.
-        Name:
-          Ref: StaticSite
+        Name: ${self:custom.siteName}.
         Type: 'A'
 
   Outputs:
     StaticSiteS3BucketName:
       Value:
-        'Ref': StaticSite
-    StaticSiteS3BucketDomainName:
+        Ref: StaticSite
+    CloudFrontDistribution:
       Value:
         Fn::GetAtt:
-          - StaticSite
+          - CloudFrontDistribution
           - DomainName
-    StaticSiteS3BucketWebsiteURL:
-      Value:
-        Fn::GetAtt:
-          - StaticSite
-          - WebsiteURL
 
