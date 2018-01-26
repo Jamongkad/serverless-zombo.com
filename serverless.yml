@@ -4,7 +4,7 @@
 service: serverless-zombocom
 
 plugins:
-  - serverless-sync-s3buckets
+  - serverless-s3-sync
 
 custom:
   syncS3Buckets:
