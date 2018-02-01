@@ -8,9 +8,7 @@ plugins:
 
 custom:
   siteName: serverless-zombo.com
-  # Bucket name no longer needs to be tied to site name. We can change bucket
-  # name down the road if we want to easily now.
-  bucketName: ${self:custom.siteName}
+  bucketName: ${self:service}-staticsite-${self:provider.region}
   aliasHostedZoneId: Z2FDTNDATAQYW2     # us-east-1
   aliasDNSName: s3-website-us-east-1.amazonaws.com
   s3Sync:
